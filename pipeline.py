@@ -325,6 +325,32 @@ def llm_json(prompt):
     return gemini_json(prompt)
 
 # ---------------------------------------------------------------- images
+def _pollinations_image(prompt, out):
+    """Keyless free image fallback (no account, no billing, Flux-class model).
+
+    Cloudflare Workers AI gives 10,000 free neurons per *account* per day and
+    every studio on this account draws from the same pool. When an hourly job
+    drains it first, flux returns 429 and this pipeline used to fail outright.
+    This endpoint needs no key, so generation still completes at zero cost.
+    """
+    try:
+        q = urllib.parse.quote(prompt[:900])
+        url = ("https://image.pollinations.ai/prompt/" + q +
+               "?width=576&height=1024&model=flux&nologo=true&seed=" +
+               str(int(time.time()) % 100000))
+        print("[img] trying free keyless fallback")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=180) as r:
+            data = r.read()
+        if len(data) < 10000:
+            raise ValueError(f"fallback image too small ({len(data)} bytes)")
+        out.write_bytes(data)
+        print(f"[img] OK via free keyless fallback ({len(data)//1024} KB)")
+        return True
+    except Exception as e:
+        print(f"[img] keyless fallback failed: {e}")
+        return False
+
 def gen_image(prompt, out):
     acct = os.environ["CLOUDFLARE_ACCOUNT_ID"]
     key = os.environ["CLOUDFLARE_API_TOKEN"]
@@ -367,6 +393,8 @@ def gen_image(prompt, out):
                 if is_daily:
                     limit_hits += 1
                     if limit_hits >= 2:
+                        if _pollinations_image(prompt, out):
+                            return
                         raise DailyLimitError(f"Cloudflare free daily limit reached. Last: {last[:150]}")
                 elif e.code in (401, 403, 404):
                     break
@@ -380,6 +408,8 @@ def gen_image(prompt, out):
             finally:
                 if out.exists() and out.stat().st_size <= 10000:
                     out.unlink()
+    if _pollinations_image(prompt, out):
+        return
     raise RuntimeError(f"image generation failed for {out.name}. Last: {last}")
 
 # ---------------------------------------------------------------- memory
