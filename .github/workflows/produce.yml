@@ -1,5 +1,7 @@
 name: produce
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs: {topic: {description: "optional brief — empty = continue the series", required: false}}
   # OpsHub triggers this studio with a repository_dispatch instead of a cron.
@@ -10,7 +12,19 @@ permissions:
   contents: write
 concurrency: {group: produce, cancel-in-progress: false}
 jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile pipeline and hub modules
+        run: python -m py_compile pipeline.py hub.py
+
   produce:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
