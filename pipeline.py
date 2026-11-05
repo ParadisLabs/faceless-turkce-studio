@@ -372,7 +372,7 @@ def gen_image(prompt, out):
         for attempt in range(1, 4):
             try:
                 print(f"[img] {name} attempt {attempt}/3")
-                if not reserve_image("faceless-turkce-studio", f"{out.name}:{name}:{attempt}"):
+                if not reserve_image("faceless-turkce-studio", f"{out}:{name}:{attempt}"):
                     if _pollinations_image(prompt, out):
                         return
                     raise DailyLimitError("quota reservation denied and fallback failed")
