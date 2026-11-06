@@ -16,6 +16,7 @@ those are what make the generated script Turkish. Changing them changes the outp
 import argparse, base64, datetime, json, os, socket, subprocess, sys, time, urllib.request, urllib.error
 from pathlib import Path
 import requests
+from render_quality import VIDEO_WIDTH, VIDEO_HEIGHT, encoder_args, validate_video
 
 import hub
 
@@ -596,7 +597,13 @@ def cmd_produce(ep_id):
         sf = segs / f"seg{i}.mp4"
         seg_files.append(sf)
         if sf.exists():
-            print(f"[seg] {i} cached"); continue
+            try:
+                validate_video(sf)
+            except Exception as exc:
+                print(f"[seg] {i} cache is outdated or invalid; rebuilding: {exc}")
+                sf.unlink()
+            else:
+                print(f"[seg] {i} cached"); continue
         a = dur(auds / f"L{i}.mp3")
         frames = int(a * FPS) + FPS
         mode = s.get("mode", "wide")
@@ -608,12 +615,14 @@ def cmd_produce(ep_id):
         else:
             zexpr = "min(zoom+0.0015,1.25)"
         # NO TEXT ON SCREEN — v7's drawtext caption/label filters were removed on purpose.
-        vf = ("scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,"
-              f"zoompan=z='{zexpr}':d={frames}:s=720x1280:fps={FPS},format=yuv420p")
+        vf = (f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=increase:flags=lanczos,"
+              f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1,"
+              f"zoompan=z='{zexpr}':d={frames}:s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:fps={FPS},format=yuv420p")
         try:
             sh(["ffmpeg", "-y", "-loop", "1", "-i", imgs / f"L{i}.png", "-i", auds / f"L{i}.mp3",
-                "-vf", vf, "-t", f"{a:.2f}", "-r", str(FPS), "-pix_fmt", "yuv420p",
-                "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-shortest", sf])
+                "-vf", vf, "-t", f"{a:.2f}", *encoder_args(FPS),
+                "-c:a", "aac", "-b:a", "160k", "-shortest", sf])
+            validate_video(sf)
         except Exception:
             if sf.exists():
                 sf.unlink()
@@ -622,7 +631,9 @@ def cmd_produce(ep_id):
     lst = ep / "list.txt"
     lst.write_text("".join(f"file '{s}'\n" for s in seg_files))
     sh(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst,
-        "-c", "copy", ep / "video.mp4"])
+        "-c", "copy", "-movflags", "+faststart", ep / "video.mp4"])
+    qa = validate_video(ep / "video.mp4")
+    print(f"[qa] {qa['width']}x{qa['height']} H.264 · {qa['duration']:.1f}s · audio OK")
     meta = {"episode": ep_id, "language": "tr", "voice": VOICE,
             "title": sc["title"], "caption": sc["caption"], "hashtags": sc["hashtags"],
             "shots": len(shots), "flavor": sc.get("flavor", ""),
