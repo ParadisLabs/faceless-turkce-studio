@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Compile pipeline and hub modules
-        run: python -m py_compile pipeline.py hub.py
+        run: python -m py_compile pipeline.py hub.py quota.py tests/test_quota.py && python -m unittest discover -s tests -v
 
   produce:
     if: github.event_name != 'pull_request'
