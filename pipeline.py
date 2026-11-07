@@ -13,12 +13,13 @@ NOTE FOR THE OWNER: all code comments and log lines are in English on purpose.
 Only the strings sent to the LLM (ROLE / SCHEMA / prompts) are Turkish, because
 those are what make the generated script Turkish. Changing them changes the output.
 """
-import argparse, base64, datetime, json, os, socket, subprocess, sys, time, urllib.request, urllib.error
+import argparse, base64, datetime, json, os, socket, subprocess, sys, time, urllib.request, urllib.error, urllib.parse
 from pathlib import Path
 import requests
 from render_quality import VIDEO_WIDTH, VIDEO_HEIGHT, encoder_args, validate_video
 
 import hub
+from quota import reserve_image
 
 socket.setdefaulttimeout(120)
 ROOT = Path(__file__).parent
@@ -343,8 +344,12 @@ def _pollinations_image(prompt, out):
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=180) as r:
             data = r.read()
-        if len(data) < 10000:
-            raise ValueError(f"fallback image too small ({len(data)} bytes)")
+            content_type = r.headers.get("Content-Type", "").lower()
+        valid_magic = (data.startswith(b"\x89PNG\r\n\x1a\n")
+                       or data.startswith(b"\xff\xd8\xff")
+                       or data.startswith(b"RIFF") and data[8:12] == b"WEBP")
+        if len(data) < 10000 or not content_type.startswith("image/") or not valid_magic:
+            raise ValueError("fallback response is not a valid image")
         out.write_bytes(data)
         print(f"[img] OK via free keyless fallback ({len(data)//1024} KB)")
         return True
@@ -368,6 +373,10 @@ def gen_image(prompt, out):
         for attempt in range(1, 4):
             try:
                 print(f"[img] {name} attempt {attempt}/3")
+                if not reserve_image("faceless-turkce-studio", f"{out}:{name}:{attempt}"):
+                    if _pollinations_image(prompt, out):
+                        return
+                    raise DailyLimitError("quota reservation denied and fallback failed")
                 req = urllib.request.Request(
                     f"https://api.cloudflare.com/client/v4/accounts/{acct}/ai/run/{model}",
                     data=json.dumps(body).encode(),
@@ -393,7 +402,7 @@ def gen_image(prompt, out):
                             (e.code == 429 and any(k in low for k in ("daily", "limit", "quota", "neuron"))))
                 if is_daily:
                     limit_hits += 1
-                    if limit_hits >= 2:
+                    if limit_hits >= 1:
                         if _pollinations_image(prompt, out):
                             return
                         raise DailyLimitError(f"Cloudflare free daily limit reached. Last: {last[:150]}")
