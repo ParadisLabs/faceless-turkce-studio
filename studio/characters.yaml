@@ -1,0 +1,27 @@
+version: 1
+brand: true_crime
+character_id: true_crime_investigator
+visual_identity:
+  style: "cinematic illustrated 2D noir; textured ink-and-gouache finish; muted charcoal, deep teal and parchment palette"
+  silhouette: "adult male investigator; long dark trench coat; layered dark clothing and scarf"
+  signature: "worn vintage notebook and fountain pen; understated, recognizable coat silhouette"
+  face: "serious analytical expression; consistent facial proportions; not based on a real person"
+personality: [analytical, patient, observant, restrained]
+poses_required: [front, three_quarter, side, back, standing, seated, reading_case_file, writing_notes, presenting_evidence]
+expressions_required: [focused, tense, thoughtful, concerned, skeptical, resolved]
+animation_contract:
+  preserve_model_proportions: true
+  use_reference_sheet_for_every_scene: true
+  mouth_shapes: [rest, A, E, O, M, F, L]
+  hand_pose_library: true
+  no_photorealistic_character_reinterpretation: true
+language_editions:
+  en: {voice_locale: "en", script: independently_written}
+  tr: {voice_locale: "tr-TR", script: independently_written}
+asset_paths:
+  model_sheet: "assets/characters/true-crime/model-sheet.png"
+  expressions: "assets/characters/true-crime/expressions/"
+  mouth_shapes: "assets/characters/true-crime/mouth/"
+  poses: "assets/characters/true-crime/poses/"
+  transparent_renders: "assets/characters/true-crime/renders/"
+rights: "Use only studio-owned or explicitly commercially licensed character assets."
