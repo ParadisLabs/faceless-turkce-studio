@@ -102,3 +102,28 @@ curl -X POST https://api.github.com/repos/<owner>/<repo>/dispatches \
 ## Shared image quota
 
 Cloudflare image calls are admitted through OpsHub's signed `/ai-usage/reserve` endpoint. The shared UTC-day limits are 24 calls total and 10 per studio. This counts requests, not neurons, and cannot account for other Cloudflare workloads. If the ledger is missing, unavailable, or at its cap, the studio skips Cloudflare and uses its keyless Pollinations fallback. Existing `HUB_URL` and `HUB_WEBHOOK_SECRET` Actions secrets are required; no new secret is introduced. Deploy the OpsHub upgrade before merging/enabling this studio change.
+
+
+## True-crime editorial safety gate (in progress)
+
+The legacy 7-level generator creates fictional stories and is **not suitable**
+for true-crime documentaries. Its write, render, and delivery commands are
+therefore deliberately paused. Adding a dossier does not reactivate them.
+
+For each future episode, the research workflow must provide
+`episodes/<episode-id>/case_dossier.json`. The validator currently requires:
+
+- case title, jurisdiction, explicit legal status, and an ISO `as_of_date`;
+- a dated timeline whose events cite known source IDs;
+- at least two HTTPS sources, including at least one primary court or official source;
+- every material claim linked to at least two source IDs and labelled with its
+  evidentiary/legal status;
+- explicit victim-safety review and human editorial approval.
+
+The schema validator is in `truecrime_dossier.py`; its offline tests are in
+`tests/test_truecrime_dossier.py`. Passing schema validation is only a
+minimum intake check, not proof that sources are independent, authentic,
+accurately interpreted, or sufficient. A human researcher must verify those
+facts. The future script engine must preserve claim-to-source references and
+must distinguish allegations, charges, convictions, appeals, acquittals, and
+unresolved matters. No public publishing is enabled.
