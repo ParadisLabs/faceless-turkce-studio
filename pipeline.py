@@ -459,7 +459,12 @@ def require_case_dossier(ep_id):
 
 
 def cmd_write(ep_id, topic):
-    dossier = require_case_dossier(ep_id)
+    require_case_dossier(ep_id)
+    raise RuntimeError(
+        "TRUE-CRIME PRODUCTION PAUSED: the legacy writer still generates fictional "
+        "stories. The evidence-led case-script generator is not implemented yet; "
+        "no script will be generated from this dossier."
+    )
     ep = EPS / ep_id
     ep.mkdir(parents=True, exist_ok=True)
     out = ep / "script.json"
@@ -588,6 +593,10 @@ def cmd_write(ep_id, topic):
 # ---------------------------------------------------------------- produce
 def cmd_produce(ep_id):
     require_case_dossier(ep_id)
+    raise RuntimeError(
+        "TRUE-CRIME PRODUCTION PAUSED: rendering is disabled until the "
+        "evidence-led script generator and claim-to-source checks are implemented."
+    )
     ep = EPS / ep_id
     sc = json.loads((ep / "script.json").read_text())
     shots = sc["shots"]
@@ -695,6 +704,10 @@ def _emit_ready(sc, ep_id):
 
 def cmd_notify(ep_id):
     require_case_dossier(ep_id)
+    raise RuntimeError(
+        "TRUE-CRIME DELIVERY PAUSED: public/channel delivery is disabled until "
+        "evidence-led script validation and human review are implemented."
+    )
     ep = EPS / ep_id
     sc = json.loads((ep / "script.json").read_text())
     text = (f"🎬 {sc['title']}\n\n{sc.get('hook', '')}\n\n{sc['caption']}\n\n"
