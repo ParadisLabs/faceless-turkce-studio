@@ -1,6 +1,6 @@
-# True Crime
+# True Crime — Turkish Edition
 
-Bilingual, evidence-led documentary studio covering documented criminal cases in English and Turkish. Protects victims and private individuals; distinguishes allegations from proven findings.
+Planned identity: Turkish-language, evidence-led documentaries about documented criminal cases. IMPORTANT: the current pipeline is still the legacy fictional 7-level story generator; the true-crime research dossier, source validation, case timeline, and legal-status checks have NOT yet been implemented. Production remains disabled until that editorial engine is replaced and tested.
 
 
 Automated vertical (9:16) series builder that outputs **Turkish** episodes.
