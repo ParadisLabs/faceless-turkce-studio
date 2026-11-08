@@ -1,4 +1,7 @@
-# Faceless Türkçe Stüdyo v8
+# True Crime
+
+Bilingual, evidence-led documentary studio covering documented criminal cases in English and Turkish. Protects victims and private individuals; distinguishes allegations from proven findings.
+
 
 Automated vertical (9:16) series builder that outputs **Turkish** episodes.
 Turkish sibling of `faceless-studio` v7, but with the captions removed and a
