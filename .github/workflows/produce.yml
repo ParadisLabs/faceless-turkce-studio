@@ -24,7 +24,8 @@ jobs:
         run: python -m py_compile pipeline.py hub.py quota.py tests/test_quota.py && python -m unittest discover -s tests -v
 
   produce:
-    if: github.event_name != 'pull_request'
+    # Production stays OFF until the owner explicitly sets PRODUCTION_ENABLED=true.
+    if: github.event_name != 'pull_request' && vars.PRODUCTION_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
