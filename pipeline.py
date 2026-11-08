@@ -24,6 +24,8 @@ ROOT = Path(__file__).parent
 EPS = ROOT / "episodes"
 
 VOICE = os.environ.get("VOICE", "tr-TR-AhmetNeural")   # tr-TR-EmelNeural = female
+VOICE_RATE = os.environ.get("VOICE_RATE", "-10%")
+VOICE_PITCH = os.environ.get("VOICE_PITCH", "-1Hz")
 FPS = 30
 GROQ = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_UA = "faceless-turkce-studio/1.0"
@@ -333,7 +335,7 @@ def gen_image(prompt, out):
         ("flux", "@cf/black-forest-labs/flux-1-schnell",
          {"prompt": prompt, "steps": 4}),
         ("sdxl", "@cf/stabilityai/stable-diffusion-xl-base-1.0",
-         {"prompt": prompt, "width": 576, "height": 1024}),
+         {"prompt": prompt, "width": 1080, "height": 1920}),
     ]
     last = None
     limit_hits = 0
@@ -553,7 +555,7 @@ def cmd_produce(ep_id):
         txt = s["narration"]
         for attempt in range(1, 4):
             try:
-                sh(["edge-tts", "--voice", VOICE, "--text", txt, "--write-media", out])
+                sh(["edge-tts", "--voice", VOICE, "--rate", VOICE_RATE, "--pitch", VOICE_PITCH, "--text", txt, "--write-media", out])
                 break
             except Exception as e:
                 print(f"[tts] L{i} attempt {attempt}: {e}")
@@ -578,7 +580,7 @@ def cmd_produce(ep_id):
         else:
             zexpr = "min(zoom+0.0015,1.25)"
         # NO TEXT ON SCREEN — v7's drawtext caption/label filters were removed on purpose.
-        vf = ("scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,"
+        vf = ("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
               f"zoompan=z='{zexpr}':d={frames}:s=720x1280:fps={FPS},format=yuv420p")
         try:
             sh(["ffmpeg", "-y", "-loop", "1", "-i", imgs / f"L{i}.png", "-i", auds / f"L{i}.mp3",
