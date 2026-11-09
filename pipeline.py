@@ -13,19 +13,19 @@ NOTE FOR THE OWNER: all code comments and log lines are in English on purpose.
 Only the strings sent to the LLM (ROLE / SCHEMA / prompts) are Turkish, because
 those are what make the generated script Turkish. Changing them changes the output.
 """
-import argparse, base64, datetime, json, os, socket, subprocess, sys, time, urllib.request, urllib.error
+import argparse, base64, datetime, json, os, socket, subprocess, sys, time, urllib.request, urllib.error, urllib.parse
 from pathlib import Path
 import requests
+from render_quality import VIDEO_WIDTH, VIDEO_HEIGHT, encoder_args, validate_video
 
 import hub
+from quota import reserve_image
 
 socket.setdefaulttimeout(120)
 ROOT = Path(__file__).parent
 EPS = ROOT / "episodes"
 
 VOICE = os.environ.get("VOICE", "tr-TR-AhmetNeural")   # tr-TR-EmelNeural = female
-VOICE_RATE = os.environ.get("VOICE_RATE", "-10%")
-VOICE_PITCH = os.environ.get("VOICE_PITCH", "-1Hz")
 FPS = 30
 GROQ = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_UA = "faceless-turkce-studio/1.0"
@@ -327,6 +327,36 @@ def llm_json(prompt):
     return gemini_json(prompt)
 
 # ---------------------------------------------------------------- images
+def _pollinations_image(prompt, out):
+    """Keyless free image fallback (no account, no billing, Flux-class model).
+
+    Cloudflare Workers AI gives 10,000 free neurons per *account* per day and
+    every studio on this account draws from the same pool. When an hourly job
+    drains it first, flux returns 429 and this pipeline used to fail outright.
+    This endpoint needs no key, so generation still completes at zero cost.
+    """
+    try:
+        q = urllib.parse.quote(prompt[:900])
+        url = ("https://image.pollinations.ai/prompt/" + q +
+               "?width=576&height=1024&model=flux&nologo=true&seed=" +
+               str(int(time.time()) % 100000))
+        print("[img] trying free keyless fallback")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=180) as r:
+            data = r.read()
+            content_type = r.headers.get("Content-Type", "").lower()
+        valid_magic = (data.startswith(b"\x89PNG\r\n\x1a\n")
+                       or data.startswith(b"\xff\xd8\xff")
+                       or data.startswith(b"RIFF") and data[8:12] == b"WEBP")
+        if len(data) < 10000 or not content_type.startswith("image/") or not valid_magic:
+            raise ValueError("fallback response is not a valid image")
+        out.write_bytes(data)
+        print(f"[img] OK via free keyless fallback ({len(data)//1024} KB)")
+        return True
+    except Exception as e:
+        print(f"[img] keyless fallback failed: {e}")
+        return False
+
 def gen_image(prompt, out):
     acct = os.environ["CLOUDFLARE_ACCOUNT_ID"]
     key = os.environ["CLOUDFLARE_API_TOKEN"]
@@ -335,7 +365,7 @@ def gen_image(prompt, out):
         ("flux", "@cf/black-forest-labs/flux-1-schnell",
          {"prompt": prompt, "steps": 4}),
         ("sdxl", "@cf/stabilityai/stable-diffusion-xl-base-1.0",
-         {"prompt": prompt, "width": 1080, "height": 1920}),
+         {"prompt": prompt, "width": 576, "height": 1024}),
     ]
     last = None
     limit_hits = 0
@@ -343,6 +373,10 @@ def gen_image(prompt, out):
         for attempt in range(1, 4):
             try:
                 print(f"[img] {name} attempt {attempt}/3")
+                if not reserve_image("faceless-turkce-studio", f"{out}:{name}:{attempt}"):
+                    if _pollinations_image(prompt, out):
+                        return
+                    raise DailyLimitError("quota reservation denied and fallback failed")
                 req = urllib.request.Request(
                     f"https://api.cloudflare.com/client/v4/accounts/{acct}/ai/run/{model}",
                     data=json.dumps(body).encode(),
@@ -368,7 +402,9 @@ def gen_image(prompt, out):
                             (e.code == 429 and any(k in low for k in ("daily", "limit", "quota", "neuron"))))
                 if is_daily:
                     limit_hits += 1
-                    if limit_hits >= 2:
+                    if limit_hits >= 1:
+                        if _pollinations_image(prompt, out):
+                            return
                         raise DailyLimitError(f"Cloudflare free daily limit reached. Last: {last[:150]}")
                 elif e.code in (401, 403, 404):
                     break
@@ -382,6 +418,8 @@ def gen_image(prompt, out):
             finally:
                 if out.exists() and out.stat().st_size <= 10000:
                     out.unlink()
+    if _pollinations_image(prompt, out):
+        return
     raise RuntimeError(f"image generation failed for {out.name}. Last: {last}")
 
 # ---------------------------------------------------------------- memory
@@ -555,7 +593,7 @@ def cmd_produce(ep_id):
         txt = s["narration"]
         for attempt in range(1, 4):
             try:
-                sh(["edge-tts", "--voice", VOICE, "--rate", VOICE_RATE, "--pitch", VOICE_PITCH, "--text", txt, "--write-media", out])
+                sh(["edge-tts", "--voice", VOICE, "--text", txt, "--write-media", out])
                 break
             except Exception as e:
                 print(f"[tts] L{i} attempt {attempt}: {e}")
@@ -568,7 +606,13 @@ def cmd_produce(ep_id):
         sf = segs / f"seg{i}.mp4"
         seg_files.append(sf)
         if sf.exists():
-            print(f"[seg] {i} cached"); continue
+            try:
+                validate_video(sf)
+            except Exception as exc:
+                print(f"[seg] {i} cache is outdated or invalid; rebuilding: {exc}")
+                sf.unlink()
+            else:
+                print(f"[seg] {i} cached"); continue
         a = dur(auds / f"L{i}.mp3")
         frames = int(a * FPS) + FPS
         mode = s.get("mode", "wide")
@@ -580,12 +624,14 @@ def cmd_produce(ep_id):
         else:
             zexpr = "min(zoom+0.0015,1.25)"
         # NO TEXT ON SCREEN — v7's drawtext caption/label filters were removed on purpose.
-        vf = ("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-              f"zoompan=z='{zexpr}':d={frames}:s=720x1280:fps={FPS},format=yuv420p")
+        vf = (f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=increase:flags=lanczos,"
+              f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1,"
+              f"zoompan=z='{zexpr}':d={frames}:s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:fps={FPS},format=yuv420p")
         try:
             sh(["ffmpeg", "-y", "-loop", "1", "-i", imgs / f"L{i}.png", "-i", auds / f"L{i}.mp3",
-                "-vf", vf, "-t", f"{a:.2f}", "-r", str(FPS), "-pix_fmt", "yuv420p",
-                "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-shortest", sf])
+                "-vf", vf, "-t", f"{a:.2f}", *encoder_args(FPS),
+                "-c:a", "aac", "-b:a", "160k", "-shortest", sf])
+            validate_video(sf)
         except Exception:
             if sf.exists():
                 sf.unlink()
@@ -594,7 +640,9 @@ def cmd_produce(ep_id):
     lst = ep / "list.txt"
     lst.write_text("".join(f"file '{s}'\n" for s in seg_files))
     sh(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst,
-        "-c", "copy", ep / "video.mp4"])
+        "-c", "copy", "-movflags", "+faststart", ep / "video.mp4"])
+    qa = validate_video(ep / "video.mp4")
+    print(f"[qa] {qa['width']}x{qa['height']} H.264 · {qa['duration']:.1f}s · audio OK")
     meta = {"episode": ep_id, "language": "tr", "voice": VOICE,
             "title": sc["title"], "caption": sc["caption"], "hashtags": sc["hashtags"],
             "shots": len(shots), "flavor": sc.get("flavor", ""),

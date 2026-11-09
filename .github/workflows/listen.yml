@@ -8,6 +8,8 @@ permissions:
 concurrency: {group: listen, cancel-in-progress: true}
 jobs:
   listen:
+    # OpsHub is intended to own Telegram polling; keep legacy poller disabled by default.
+    if: vars.LEGACY_TELEGRAM_POLLING_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
