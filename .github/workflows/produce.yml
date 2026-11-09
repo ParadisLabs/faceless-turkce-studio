@@ -40,6 +40,8 @@ jobs:
       HUB_WEBHOOK_SECRET: ${{ secrets.HUB_WEBHOOK_SECRET }}
       # repository_dispatch payload -> pipeline.py (see hub.py)
       HUB_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+      OPSHUB_JOB_ID: ${{ github.event.client_payload.job_id }}
+      OPSHUB_STUDIO: true-crime
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
@@ -47,6 +49,9 @@ jobs:
         with: {python-version: "3.11", cache: pip}
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
       - run: pip install -r requirements.txt
+      - name: report start to OpsHub
+        run: python job_report.py running research 1 "pipeline starting" || true
+
       - name: run pipeline
         id: run
         continue-on-error: true
@@ -113,6 +118,14 @@ jobs:
             echo ""
           fi
           exit 1
+      - name: report completion to OpsHub
+        if: steps.run.outcome == 'success'
+        run: python job_report.py awaiting_approval approval 100 "render complete" || true
+
+      - name: report failure to OpsHub
+        if: ${{ always() && steps.run.outcome != 'success' }}
+        run: python job_report.py failed rendering 0 "pipeline failed - see run log" || true
+
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: episodes, path: "episodes/*/[!s]*", retention-days: 3}
